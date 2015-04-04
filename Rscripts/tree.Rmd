@@ -34,6 +34,8 @@ opts_chunk$set(echo = FALSE, message = FALSE, warnings = FALSE,  cache = FALSE)
 ```{r}
 download.file("https://gist.githubusercontent.com/dlebauer/357e02e5f91390fd9ca0/raw/e5f74e0d65b45014ecd9b29d90100b370b1a0f09/yields.csv", method = 'curl', destfile = 'yields.csv')
 yields <- fread("yields.csv")
+
+yields$age <- yields$year - yields$planting_date
 miscanthus <- yields[genus == "Miscanthus"]
 
 #write.csv(miscanthus, file = "data/miscanthus.csv", row.names = FALSE)
@@ -211,10 +213,17 @@ for(i in 1:nrow(new_xyt)){
 treedata <- m
 treedata$lat <- NULL
 treedata$lon <- NULL
-rtree <- rpart(yield ~ MAP + MAT + SOLAR + PET + 
-                        sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
-                        fertilizer_n + irrigation + planting_density , 
-               data = treedata)
+treedata$newMAP <- 100000*treedata$MAP
+
+treedata$P_PET <- treedata$MAP * 100000 / treedata$PET
+rtree <- rpart(yield ~ age + P_PET + newMAP + PET +
+                 MAT + SOLAR + 
+                 sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
+                 fertilizer_n + irrigation + planting_density , 
+               data = treedata,
+               maxdepth = 4,
+               minbucket = 15,
+               xval = 2)
 
 plot(as.party(rtree),tp_args=list(id=FALSE))
 plot(rtree)
