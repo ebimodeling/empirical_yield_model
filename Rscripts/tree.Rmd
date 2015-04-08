@@ -221,13 +221,17 @@ rtree <- rpart(yield ~ age + P_PET + newMAP + PET +
                  sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
                  fertilizer_n + irrigation + planting_density , 
                data = treedata,
-               maxdepth = 4,
-               minbucket = 15,
-               xval = 2)
+               maxdepth = 6,
+              # minbucket = 15,
+               xval = 2,
+               method="anova")
 
 plot(as.party(rtree),tp_args=list(id=FALSE))
 plot(rtree)
 pander(rtree$cptable)
+
+cp9 = which(rtree$cptable[, 2] == 6)
+rtree = prune(rtree, rtree$cptable[cp9, 1])
 
 opt <- which.min(rtree$cptable[,"xerror"])
 cp <- rtree$cptable[opt,"CP"]
