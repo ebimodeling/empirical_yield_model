@@ -216,29 +216,17 @@ treedata$lon <- NULL
 treedata$newMAP <- 100000*treedata$MAP
 
 treedata$P_PET <- treedata$MAP * 100000 / treedata$PET
-rtree <- rpart(yield ~ age + P_PET + newMAP + PET +
+rtree <- rpart(yield ~ age + P_PET + newMAP  + PET +
                  MAT + SOLAR + 
                  sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
                  fertilizer_n + irrigation + planting_density , 
                data = treedata,
                maxdepth = 6,
-              # minbucket = 15,
+               maxcompete =4,
                xval = 2,
                method="anova")
 
 plot(as.party(rtree),tp_args=list(id=FALSE))
-plot(rtree)
-pander(rtree$cptable)
-
-cp9 = which(rtree$cptable[, 2] == 6)
-rtree = prune(rtree, rtree$cptable[cp9, 1])
-
-opt <- which.min(rtree$cptable[,"xerror"])
-cp <- rtree$cptable[opt,"CP"]
-
-rtree_prune <- prune(rtree,cp=cp)
-plot(as.party(rtree_prune),tp_args=list(id=FALSE))
-plot(rtree_prune)
 summary(rtree)
 ```
 
@@ -248,18 +236,10 @@ TODO what do you see? what does it mean?
 
 ```{r M5P}
 
-m2 <- m[,list(yield, sacchariflorus = as.numeric(sacchariflorus), 
-              sinensis = as.integer(sinensis), 
-              sinensis.Hybrid = as.integer(sinensis.Hybrid), 
-              giganteus = as.integer(giganteus),
-              irrigated = as.integer(irrigated),
-              lat, lon, fertilizer_n,  planting_density)]
-m2[] <- lapply(m2, as.numeric)
-
-m5pTree <- M5P(yield ~ sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
-                 lat + lon + fertilizer_n + irrigated + planting_density, 
-         data = m2)
-
+m5pTree <- M5P(yield ~ age + P_PET + newMAP + PET + MAT + SOLAR + 
+                 sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
+                 fertilizer_n + irrigation + planting_density , 
+               data = treedata)
 
 summary(m5pTree)
 plot(m5pTree)
