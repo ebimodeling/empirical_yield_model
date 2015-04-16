@@ -22,6 +22,7 @@ library(pander)
 library(data.table)
 library(knitr)
 library(printr)
+library(splitstackshape)
 
 opts_chunk$set(echo = FALSE, message = FALSE, warnings = FALSE,  cache = FALSE)
 
@@ -117,53 +118,36 @@ for(i in 1:nrow(unique_xyt)){
 ggplot() + geom_point(data = ncep_data, aes(lon, lat, color = MAP/PET))
 ```
 
-```{r joindata}
-m$SOLAR=0
-m$MAP=0
-m$MAT=0
-m$PET=0
+```{r data_clean}
 
+#density to numeric
+m$planting_density <- as.numeric(m$planting_density)
 
-m$giganteus <- NULL
-m$sinensis.Hybrid <- NULL
-m$sinensis <- NULL
-m$sacchariflorus <-NULL
+#T/F to 1/0
+m$giganteus <- as.numeric(m$giganteus)
+m$sacchariflorus <- as.numeric(m$sacchariflorus)
+m$sinensis <- as.numeric(m$sinensis)
+m$sinensis.Hybrid <- as.numeric(m$sinensis.Hybrid)
+m$irrigated <- as.numeric(m$irrigated)
 
-m$giganteus = 0
-m$sinensis.Hybrid = 0 
-m$sinensis = 0
-m$sacchariflorus = 0
-m$irrigation = 0
+#join two data frames by "lat, lon, year"
+preJoinM <- transform(m , location = paste(lat, lon, year))
+preJoinNcep <- transform(ncep_data , location = paste(lat, lon, year))
 
-for(i in 1:nrow(m)){
-  
-  if(m[i]$species == "Miscanthus x giganteus")
-      m[i]$giganteus = 1
-  else if (m[i]$species == "Miscanthus sacchariflorus")
-      m[i]$sacchariflorus = 1
-  else if (m[i]$species == "Miscanthus sinensis Hybrid")
-      m[i]$sinensis.Hybrid = 1
-  else if (m[i]$species == "Miscanthus sinensis")
-      m[i]$sinensis = 1
-  
-  if(m[i]$irrigated == "TRUE")
-      m[i]$irrigation <- 1
+join <- merge(x = preJoinM, y = preJoinNcep, by = "location", all.x=TRUE)
 
-  
-  for(j in 1:nrow(ncep_data)){
-      if (m[i]$lat == ncep_data[j]$lat 
-          && m[i]$lon == ncep_data[j]$lon 
-          && m[i]$year == ncep_data[j]$year){
-        m[i]$MAT <- ncep_data[j]$MAT
-        m[i]$MAP <- ncep_data[j]$MAP
-        m[i]$PET <- ncep_data[j]$PET
-        m[i]$SOLAR <- ncep_data[j]$SOLAR
-      }
-      next
-  }
-  print(i)
-}
-m$planting_density = as.numeric(as.character(m$planting_density))
+#get the training data set 
+trainingSet <- as.data.frame(subset(join, select = c("irrigated" , 
+                "sacchariflorus" , "sinensis" , "sinensis.Hybrid" , "giganteus" ,
+                "fertilizer_n","planting_density", "age" ,
+                "MAT" , "MAP" , "PET" , "SOLAR",
+                "yield")))
+
+#make a new col P_PET
+trainingSet$P_PET <- trainingSet$MAP/ trainingSet$PET
+
+#scale the numeric data
+scaledTrainingSet <- cbind(trainingSet[1:5] , scale(trainingSet[6:14]))
 
 ```
 
@@ -210,20 +194,13 @@ for(i in 1:nrow(new_xyt)){
 ### Regression Tree
 
 ```{r reg-tree}
-treedata <- m
-treedata$lat <- NULL
-treedata$lon <- NULL
-treedata$newMAP <- 100000*treedata$MAP
 
-treedata$P_PET <- treedata$MAP * 100000 / treedata$PET
-rtree <- rpart(yield ~ age + P_PET + newMAP  + PET +
-                 MAT + SOLAR + 
+rtree <- rpart(yield ~ age  + PET +
+                 MAT + SOLAR + P_PET +
                  sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
-                 fertilizer_n + irrigation + planting_density , 
-               data = treedata,
-               maxdepth = 6,
-               maxcompete =4,
-               xval = 2,
+                 fertilizer_n + irrigated + planting_density , 
+               data = trainingSet,
+               xval = 5,
                method="anova")
 
 plot(as.party(rtree),tp_args=list(id=FALSE))
@@ -232,14 +209,30 @@ summary(rtree)
 
 TODO what do you see? what does it mean?
 
+### Random Forest
+
+```{r randomForest}
+rforest <- randomForest(yield ~ age  + PET +
+                 MAT + SOLAR + P_PET +
+                 sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
+                 fertilizer_n + irrigated + planting_density , 
+               data = trainingSet,
+               xval = 2,
+               method="anova")
+
+plot(as.party(rforest),tp_args=list(id=FALSE))
+summary(rforest)
+```
+
+
 ## Using M5P algorithm
 
 ```{r M5P}
 
-m5pTree <- M5P(yield ~ age + P_PET + newMAP + PET + MAT + SOLAR + 
+m5pTree <- M5P(yield ~ age  + PET + MAT + SOLAR + 
                  sacchariflorus + sinensis + sinensis.Hybrid + giganteus +
-                 fertilizer_n + irrigation + planting_density , 
-               data = treedata)
+                 fertilizer_n + irrigated + planting_density , 
+               data = scaledTrainingSet)
 
 summary(m5pTree)
 plot(m5pTree)
