@@ -45,11 +45,7 @@ miscanthus <- yields[genus == "Miscanthus"]
 ```{r data-load}
 #miscanthus <- fread("data/miscanthus.csv")
 
-m <- miscanthus[!(is.na(planting_density) | is.na(yield)),
-                `:=`(sacchariflorus = grepl('sacchariflorus', species),
-                     sinensis = grepl('sinensis', species),
-                     sinensis.Hybrid = grepl('Hybrid', species),
-                     giganteus = grepl('giganteus', species))]
+m <- miscanthus[!(is.na(planting_density) | is.na(yield))]
 m<-m[- grep('""""', m$planting_density),]
 ```
 
@@ -118,39 +114,6 @@ for(i in 1:nrow(unique_xyt)){
 ggplot() + geom_point(data = ncep_data, aes(lon, lat, color = MAP/PET))
 ```
 
-```{r data_clean}
-
-#density to numeric
-m$planting_density <- as.numeric(m$planting_density)
-
-#T/F to 1/0
-m$giganteus <- as.numeric(m$giganteus)
-m$sacchariflorus <- as.numeric(m$sacchariflorus)
-m$sinensis <- as.numeric(m$sinensis)
-m$sinensis.Hybrid <- as.numeric(m$sinensis.Hybrid)
-m$irrigated <- as.numeric(m$irrigated)
-
-#join two data frames by "lat, lon, year"
-preJoinM <- transform(m , location = paste(lat, lon, year))
-preJoinNcep <- transform(ncep_data , location = paste(lat, lon, year))
-
-join <- merge(x = preJoinM, y = preJoinNcep, by = "location", all.x=TRUE)
-
-#get the training data set 
-trainingSet <- as.data.frame(subset(join, select = c("irrigated" , 
-                "sacchariflorus" , "sinensis" , "sinensis.Hybrid" , "giganteus" ,
-                "fertilizer_n","planting_density", "age" ,
-                "MAT" , "MAP" , "PET" , "SOLAR",
-                "yield")))
-
-#make a new col P_PET
-trainingSet$P_PET <- trainingSet$MAP/ trainingSet$PET
-
-#scale the numeric data
-scaledTrainingSet <- cbind(trainingSet[1:5] , scale(trainingSet[6:14]))
-
-```
-
 #### Daymet
 
 _note:_ daymet only covers US, Canada, Mexico
@@ -188,7 +151,86 @@ for(i in 1:nrow(new_xyt)){
 }
 
 ```
+
 ## Analyses
+### Data Preparation
+
+
+```{r dataset_construction}
+
+#join two data frames by "lat, lon, year"
+preJoinM <- transform(m , location = paste(lat, lon, year))
+preJoinNcep <- transform(ncep_data , location = paste(lat, lon, year))
+join <- merge(x = preJoinM, y = preJoinNcep, by = "location", all.x=TRUE)
+trainingSet <- as.data.frame(subset(join, select = c("irrigated" , "genus",
+                "fertilizer_n", "planting_density", "age" ,
+                "MAT" , "MAP" , "PET" , "SOLAR",
+                "yield")))
+
+#make a new col P_PET
+trainingSet$P_PET <- trainingSet$MAP / trainingSet$PET
+```
+
+### Naive Bayes
+```{r naiveBayes}
+library(arules)
+library(e1071)
+library(caret)
+
+NBset <- trainingSet[sample(nrow(trainingSet)),]
+
+NBset$irrigated <- as.factor(NBset$irrigated)
+NBset$genus <- as.factor(NBset$genus)
+
+NBset$yield <- discretize(NBset$yield, method="frequency", categories = 5, labels = NULL, ordered=FALSE, onlycuts=FALSE)
+NBset$yield <- as.factor(NBset$yield)
+
+trainingNB <- NBset[1:600,]
+testingNB <- NBset[601:653,]
+
+model <- naiveBayes(yield~., data = trainingNB)
+
+pred <- predict(model, newdata = testingNB)
+table(pred, testingNB$yield)
+
+
+```
+
+
+
+
+```{r data_clean}
+
+#density to numeric
+m$planting_density <- as.numeric(m$planting_density)
+
+#T/F to 1/0
+m$giganteus <- as.numeric(m$giganteus)
+m$sacchariflorus <- as.numeric(m$sacchariflorus)
+m$sinensis <- as.numeric(m$sinensis)
+m$sinensis.Hybrid <- as.numeric(m$sinensis.Hybrid)
+m$irrigated <- as.numeric(m$irrigated)
+
+#join two data frames by "lat, lon, year"
+preJoinM <- transform(m , location = paste(lat, lon, year))
+preJoinNcep <- transform(ncep_data , location = paste(lat, lon, year))
+
+join <- merge(x = preJoinM, y = preJoinNcep, by = "location", all.x=TRUE)
+
+#get the training data set 
+trainingSet <- as.data.frame(subset(join, select = c("irrigated" , 
+                "sacchariflorus" , "sinensis" , "sinensis.Hybrid" , "giganteus" ,
+                "fertilizer_n","planting_density", "age" ,
+                "MAT" , "MAP" , "PET" , "SOLAR",
+                "yield")))
+
+#make a new col P_PET
+trainingSet$P_PET <- trainingSet$MAP/ trainingSet$PET
+
+#scale the numeric data
+#scaledTrainingSet <- cbind(trainingSet[1:5] , scale(trainingSet[6:14]))
+
+```
 
 
 ### Regression Tree
@@ -239,3 +281,53 @@ plot(m5pTree)
 ```
 
 TODO what do you see? what does it mean?
+
+#naiveBayes
+```{r nb}
+library(arules)
+library(e1071)
+library(caret)
+nbset <- trainingSet
+nbset$yield <- discretize(nbset$yield, method="frequency", categories = 5, labels = NULL, ordered=FALSE, onlycuts=FALSE)
+
+nbset$yieldn <- nbset$yield
+nbset$yield <- NULL
+
+nbset$yield <- as.factor(nbset$yield)
+
+
+
+```
+
+#featureSelection
+```{r nb}
+library(FSelector)
+nbset$yieldn <- NULL 
+cfs(yield~.,data=nbset)
+chi.squared(yield~.,data=nbset)
+information.gain(yield~.,data=nbset)
+```
+
+#k-NN
+```{r}
+library(class)
+
+
+nbset <- as.data.frame(nbset)
+nbset <- cbind(nbset[1:13],nbset[14]) 
+nbset <- nbset[sample(nrow(nbset)),]
+pred <- knn(train=nbset[1:600,1:13], test=nbset[601:653,1:13], cl=nbset[1:600,14], k = 1, l = 0, prob = FALSE, use.all = TRUE)
+
+table(pred,nbset[601:653,14])
+
+```
+
+```{r}
+#trainingSet $yield
+
+quantile(trainingSet$yield, probs = c(1:9/10))
+
+quantile(trainingSet$yield, probs = c(1:4/5))
+
+```
+
